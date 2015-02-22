@@ -1,0 +1,111 @@
+---
+title: "Barbell lift types"
+author: "Mikhail Chernykh"
+date: "Sunday, February 22, 2015"
+output: html_document
+---
+
+```{r, echo=FALSE, warning=FALSE, results='hide', message=FALSE}
+# install.packages("caret", dependencies = c("Depends", "Suggests"))
+library(caret)
+```
+
+## Reading data
+```{r}
+train_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train_filename <- "train.csv"
+test_filename <- "test.csv"
+if(!file.exists(train_filename))
+  {
+  download.file(train_url, destfile = train_filename)
+  }
+if(!file.exists(test_filename))
+  {
+  download.file(test_url, destfile = test_filename)
+  }
+```
+The training data for this project are available here: 
+
+<`r train_url`>
+
+The test data are available here: 
+
+<`r test_url`>
+
+The data for this project come from this source: <http://groupware.les.inf.puc-rio.br/har>
+
+```{r}
+train <- read.csv(train_filename, header = TRUE, stringsAsFactors = FALSE)
+test_out <- read.csv(test_filename, header = TRUE, stringsAsFactors = FALSE)
+drops_test <- names(test_out)[colSums(is.na(test_out)) > 0]
+cleanDataset <- function(df) {
+  df[df == ""] <- NA
+  if ("classe" %in% names(df))  {
+    df$classe <- factor(df$classe)
+  }
+  # lets ignore irrelevant information
+  drops <- c("X", "X","x", "cvtd_timestamp", "raw_timestamp_part_1", "raw_timestamp_part_2", "user_name", "new_window", "num_window")
+  df <- df[, !names(df) %in% drops]
+  df <- df[, !names(df) %in% drops_test]
+  # df$new_window <- factor(df$new_window)
+  # df$user_name <- factor(df$user_name)
+  # cha <- which(lapply(df, function(x) class(x)) == "character")
+  # lapply(cha, function(x) df[[x]] <<- as.numeric(df[[x]]))
+  lapply(names(df), function(x) if(x != "classe"){df[[x]] <<- as.numeric(df[[x]])})
+  
+  df
+  }
+train <- cleanDataset(train)
+test_out <- cleanDataset(test_out)
+```
+
+## Training
+Lets split training set into 2 subsets: training subset and subset for inner testing
+```{r}
+set.seed(1)
+inTrain <- createDataPartition(y = train$classe, p = 0.6, list = FALSE)
+subtrain <- train[inTrain,]
+subtest <- train[-inTrain,]
+```
+
+Lets use k-Nearest Neighbors method ("knn") with 5-fold cross validation
+
+```{r, cache=TRUE}
+ctrl <- trainControl(method="cv", number=5)
+knnFit <- train(classe ~ ., data = subtrain, method ="knn", trControl=ctrl)
+```
+
+Lets observe cross validation results:
+```{r}
+knnFit
+```
+
+Obtained results are good enough:
+```{r}
+table(subtest$classe, predict(knnFit, subtest))
+missclassification <- round(sum(subtest$classe != predict(knnFit, subtest)) / nrow(subtest), 2)
+print(missclassification)
+```
+We expect `r missclassification` fraction of errors in test dataset.
+
+Lets use train model on the full train dataset and predict classes for test dataset
+```{r}
+test_classes <- predict(knnFit, test_out)
+pml_write_files <- function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(test_classes)
+```
+
+## Results
+Predicted classes:
+```{r}
+test_classes
+```
+
+
